@@ -1,0 +1,476 @@
+{
+  "name": "Telegram Task Manager",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "telegram",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "webhook_telegram",
+      "name": "Telegram Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Telegram message\nconst body = $input.first().json.body;\nconst message = body.message.text;\nconst chatId = body.message.chat.id;\nconst userId = body.message.from.id;\nconst userName = body.message.from.username || body.message.from.first_name || 'User';\n\n// Extract command and parameters\nconst parts = message.split(' ');\nconst command = parts[0].toLowerCase();\nconst params = parts.slice(1);\n\nreturn {\n  command: command,\n  params: params,\n  chatId: chatId,\n  userId: userId,\n  userName: userName,\n  fullMessage: message\n};"
+      },
+      "id": "parse_message",
+      "name": "Parse Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        450,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": [
+            {
+              "condition": "string",
+              "value1": "{{ $input.first().json.command }}",
+              "value2": "/create_task",
+              "operation": "equals"
+            }
+          ]
+        }
+      },
+      "id": "route_create_task",
+      "name": "Route: Create Task",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [
+        650,
+        150
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": [
+            {
+              "condition": "string",
+              "value1": "{{ $input.first().json.command }}",
+              "value2": "/update_task",
+              "operation": "equals"
+            }
+          ]
+        }
+      },
+      "id": "route_update_task",
+      "name": "Route: Update Task",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [
+        650,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": [
+            {
+              "condition": "string",
+              "value1": "{{ $input.first().json.command }}",
+              "value2": "/list_tasks",
+              "operation": "equals"
+            }
+          ]
+        }
+      },
+      "id": "route_list_tasks",
+      "name": "Route: List Tasks",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [
+        650,
+        450
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": [
+            {
+              "condition": "string",
+              "value1": "{{ $input.first().json.command }}",
+              "value2": "/task_status",
+              "operation": "equals"
+            }
+          ]
+        }
+      },
+      "id": "route_task_status",
+      "name": "Route: Task Status",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [
+        650,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate create_task parameters\nconst params = $input.first().json.params;\n\nif (params.length < 4) {\n  return {\n    valid: false,\n    error: '❌ Invalid format!\\nUsage: /create_task \"title\" \"description\" \"priority\" \"assignee\"'\n  };\n}\n\nconst priority = params[2].toLowerCase();\nif (!['low', 'medium', 'high'].includes(priority)) {\n  return {\n    valid: false,\n    error: '❌ Invalid priority!\\nUse: Low, Medium, or High'\n  };\n}\n\nreturn {\n  valid: true,\n  title: params[0].replace(/\"/g, ''),\n  description: params[1].replace(/\"/g, ''),\n  priority: priority.charAt(0).toUpperCase() + priority.slice(1),\n  assignee: params[3].replace(/\"/g, ''),\n  status: 'Open',\n  createdDate: new Date().toISOString(),\n  updatedDate: new Date().toISOString()\n};"
+      },
+      "id": "validate_create",
+      "name": "Validate Create",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        850,
+        150
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate update_task parameters\nconst params = $input.first().json.params;\n\nif (params.length < 2) {\n  return {\n    valid: false,\n    error: '❌ Invalid format!\\nUsage: /update_task {task_id} \"status\" \"notes\"'\n  };\n}\n\nconst taskId = params[0];\nif (isNaN(taskId)) {\n  return {\n    valid: false,\n    error: '❌ Task ID must be a number!'\n  };\n}\n\nconst status = params[1].toLowerCase();\nif (!['open', 'in progress', 'completed', 'on hold'].includes(status)) {\n  return {\n    valid: false,\n    error: '❌ Invalid status!\\nUse: Open, In Progress, Completed, or On Hold'\n  };\n}\n\nreturn {\n  valid: true,\n  taskId: parseInt(taskId),\n  status: status.charAt(0).toUpperCase() + status.slice(1),\n  notes: params.slice(2).join(' ').replace(/\"/g, ''),\n  updatedDate: new Date().toISOString()\n};"
+      },
+      "id": "validate_update",
+      "name": "Validate Update",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        850,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "columns": {
+          "mappingMode": "defineByKeyName",
+          "value": {
+            "Task ID": "={{ $input.previous().json.valid ? $randomInt(1000) : '' }}",
+            "Title": "={{ $input.previous().json.title || '' }}",
+            "Description": "={{ $input.previous().json.description || '' }}",
+            "Priority": "={{ $input.previous().json.priority || '' }}",
+            "Status": "={{ $input.previous().json.status || 'Open' }}",
+            "Assignee": "={{ $input.previous().json.assignee || '' }}",
+            "Created Date": "={{ $input.previous().json.createdDate || '' }}",
+            "Updated Date": "={{ $input.previous().json.updatedDate || '' }}",
+            "Notes": "=Created via Telegram"
+          }
+        },
+        "options": {}
+      },
+      "id": "append_to_sheets",
+      "name": "Append to Google Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        1050,
+        150
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": "google-sheets-credential"
+      }
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "options": {}
+      },
+      "id": "read_sheets_list",
+      "name": "Read Google Sheets (List)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        850,
+        450
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": "google-sheets-credential"
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format task list for Telegram\nconst tasks = $input.first().json;\n\nif (!tasks || tasks.length === 0) {\n  return {\n    formatted: '📋 No tasks found!'\n  };\n}\n\nlet taskList = '📋 <b>Current Tasks</b>\\n\\n';\nlet count = 0;\n\ntasks.forEach(task => {\n  if (task['Task ID'] && task['Title']) {\n    taskList += `#${task['Task ID']} - ${task['Title']}\\n`;\n    taskList += `Status: ${task['Status'] || 'N/A'} | Priority: ${task['Priority'] || 'N/A'}\\n`;\n    taskList += `Assignee: ${task['Assignee'] || 'Unassigned'}\\n\\n`;\n    count++;\n  }\n});\n\nif (count === 0) {\n  taskList = '📋 No valid tasks found!';\n} else {\n  taskList = `📋 <b>Current Tasks (${count} total)</b>\\n\\n` + taskList;\n}\n\nreturn {\n  formatted: taskList\n};"
+      },
+      "id": "format_task_list",
+      "name": "Format Task List",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        1050,
+        450
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "options": {}
+      },
+      "id": "read_sheets_status",
+      "name": "Read Google Sheets (Status)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        850,
+        600
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": "google-sheets-credential"
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Find and format single task status\nconst tasks = $input.first().json;\nconst lookingForId = parseInt($input.second().json.params[0]);\n\nconst task = tasks.find(t => parseInt(t['Task ID']) === lookingForId);\n\nif (!task) {\n  return {\n    found: false,\n    message: `❌ Task #${lookingForId} not found`\n  };\n}\n\nconst message = `📌 <b>Task Status</b> - ID #${task['Task ID']}\\n\\n` +\n  `<b>Title:</b> ${task['Title']}\\n` +\n  `<b>Description:</b> ${task['Description'] || 'N/A'}\\n` +\n  `<b>Status:</b> ${task['Status'] || 'N/A'}\\n` +\n  `<b>Priority:</b> ${task['Priority'] || 'N/A'}\\n` +\n  `<b>Assignee:</b> ${task['Assignee'] || 'Unassigned'}\\n\\n` +\n  `<b>Created:</b> ${task['Created Date'] || 'N/A'}\\n` +\n  `<b>Updated:</b> ${task['Updated Date'] || 'N/A'}\\n` +\n  `<b>Notes:</b> ${task['Notes'] || 'No notes'}`;\n\nreturn {\n  found: true,\n  message: message\n};"
+      },
+      "id": "format_task_status",
+      "name": "Format Task Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        1050,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "chat_id",
+              "value": "={{ $input.first().json.chatId }}"
+            },
+            {
+              "name": "text",
+              "value": "={{ $input.first().json.message || 'Task operation completed' }}"
+            },
+            {
+              "name": "parse_mode",
+              "value": "HTML"
+            }
+          ]
+        }
+      },
+      "id": "send_telegram_response",
+      "name": "Send Telegram Response",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build success response for create_task\nconst task = $input.first().json;\n\nconst message = `✅ <b>Task Created Successfully!</b>\\n\\n` +\n  `<b>Task ID:</b> ${task.valid ? Math.floor(Math.random() * 10000) : 'N/A'}\\n` +\n  `<b>Title:</b> ${task.title || 'N/A'}\\n` +\n  `<b>Description:</b> ${task.description || 'N/A'}\\n` +\n  `<b>Priority:</b> ${task.priority || 'N/A'}\\n` +\n  `<b>Assignee:</b> ${task.assignee || 'N/A'}\\n` +\n  `<b>Status:</b> ${task.status || 'Open'}\\n` +\n  `<b>Created:</b> ${new Date().toLocaleString()}`;\n\nreturn {\n  message: message,\n  chatId: $input.second().json.chatId\n};"
+      },
+      "id": "build_create_response",
+      "name": "Build Create Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        1150,
+        150
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Handle validation errors\nconst validation = $input.first().json;\n\nif (!validation.valid) {\n  return {\n    message: validation.error,\n    chatId: $input.second().json.chatId,\n    isError: true\n  };\n}\n\nreturn {\n  message: 'Processing...',\n  chatId: $input.second().json.chatId,\n  isError: false\n};"
+      },
+      "id": "handle_validation_error",
+      "name": "Handle Validation Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        1000,
+        100
+      ]
+    }
+  ],
+  "connections": {
+    "webhook_telegram": {
+      "main": [
+        [
+          {
+            "node": "parse_message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "parse_message": {
+      "main": [
+        [
+          {
+            "node": "route_create_task",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "route_update_task",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "route_list_tasks",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "route_task_status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "route_create_task": {
+      "main": [
+        [
+          {
+            "node": "validate_create",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "route_update_task": {
+      "main": [
+        [
+          {
+            "node": "validate_update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "route_list_tasks": {
+      "main": [
+        [
+          {
+            "node": "read_sheets_list",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "route_task_status": {
+      "main": [
+        [
+          {
+            "node": "read_sheets_status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "validate_create": {
+      "main": [
+        [
+          {
+            "node": "handle_validation_error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "validate_update": {
+      "main": [
+        [
+          {
+            "node": "send_telegram_response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "append_to_sheets": {
+      "main": [
+        [
+          {
+            "node": "build_create_response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "read_sheets_list": {
+      "main": [
+        [
+          {
+            "node": "format_task_list",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "format_task_list": {
+      "main": [
+        [
+          {
+            "node": "send_telegram_response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "read_sheets_status": {
+      "main": [
+        [
+          {
+            "node": "format_task_status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "format_task_status": {
+      "main": [
+        [
+          {
+            "node": "send_telegram_response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "handle_validation_error": {
+      "main": [
+        [
+          {
+            "node": "send_telegram_response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "errorWorkflow": ""
+  },
+  "tags": [
+    "telegram",
+    "task-manager",
+    "google-sheets",
+    "automation"
+  ]
+}
